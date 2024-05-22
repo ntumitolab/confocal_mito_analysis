@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Union
+from typing import Union, List, Dict
 from argparse import ArgumentParser
 
 from scipy import ndimage as nd
@@ -14,16 +14,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 
-def create_folder_for_each_czi(folder_path: Union[str, Path]):
-    list_of_name =[]
-    for file in os.listdir(folder_path): 
-        file_path = os.path.join(folder_path, file) 
-        if os.path.splitext(file_path)[1]=='.czi': 
-            list_of_name.append(file_path[:-4])
-            
+def create_folder_for_each_czi(folder_path: Union[str, Path],
+                               created_dirs_path: Union[str, Path] = "./"):
+    list_of_name = [fn.stem for fn in Path(folder_path).iterdir() if fn.suffix == ".czi"]
     for name in list_of_name:
-        if not os.path.exists(name):
-            os.makedirs(name)
+        Path(created_dirs_path, name).mkdir(parents=True, exist_ok=True)
     return list_of_name
 
 
@@ -69,14 +64,9 @@ def nucleus_mask(folder_path: str):
     return binary_nucleus
 
 
-def folder_all(rootpath: str):
+def folder_all(rootpath: str) -> List[Path]:
     well_list = ['A','B','C','D','E','F','G','H']
-    folder_list = []
-    for i in range(len(well_list)):
-        for j in range(1,13):
-            well = well_list[i]+str(j)
-            folder_list.append(well)
-            
+    folder_list = [Path(rootpath, f"{w}{j}") for w in well_list for j in range(1, 13)]
     return folder_list
 
 
@@ -141,7 +131,7 @@ def particle_skeleton_analysis(binary2: np.ndarray,
 def batch_analysis(root_path: str):
     
     list_of_name = folder_all(root_path)
-    print(list_of_name[0].split('/')[-1])
+    print(list_of_name[0].name)
     df = pd.DataFrame(columns=['Img_ID', 
                                'Average Mitochondrial Area', 
                                'Average Mitochondrial Perimeter',
@@ -150,9 +140,7 @@ def batch_analysis(root_path: str):
                                'Average Node Degree',
                                'Average Membrane Potential'])
         
-    for i in range(len(list_of_name)):
-        folder_path = root_path + '/' + list_of_name[i]
-        
+    for i, folder_path in enumerate(list_of_name):
         tmrm_path = folder_path + '/'+folder_path.split('/')[-1] +'0000.tif'
         mask_path = folder_path +'/'+folder_path.split('/')[-1] + 'mask.png'        
         nucleus_path = folder_path + '/'+folder_path.split('/')[-1] +'nucleusmask.png'  
