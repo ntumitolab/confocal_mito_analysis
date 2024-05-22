@@ -1,38 +1,20 @@
+import os
+from pathlib import Path
+from typing import Union
+from argparse import ArgumentParser
+
+from scipy import ndimage as nd
+import pandas as pd
+from skan import Skeleton, summarize
+from skimage.restoration import denoise_tv_chambolle
+from skimage.morphology import skeletonize
+from skimage.exposure import adjust_sigmoid
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import os
-import csv
-from itertools import zip_longest
-import math
-
-import scipy
-from scipy import ndimage as nd
-from scipy.signal import convolve2d as conv2
-from scipy import stats
-
-import pandas as pd
-
-import skan
-#from skan import skeleton_to_csgraph
-from skan import Skeleton, summarize
-from skan import draw
-
-import seaborn as sns
-
-import skimage
-from skimage.filters import unsharp_mask
-from skimage import color, data, restoration
-from skimage.morphology import square
-from skimage.restoration import denoise_wavelet, denoise_tv_chambolle
-from skimage import morphology
-from skimage.morphology import skeletonize
-from skimage import img_as_ubyte
-from skimage.exposure import adjust_sigmoid
 
 
-def create_folder_for_each_czi(folder_path: str):
+def create_folder_for_each_czi(folder_path: Union[str, Path]):
     list_of_name =[]
     for file in os.listdir(folder_path): 
         file_path = os.path.join(folder_path, file) 
@@ -160,8 +142,13 @@ def batch_analysis(root_path: str):
     
     list_of_name = folder_all(root_path)
     print(list_of_name[0].split('/')[-1])
-    df = pd.DataFrame(columns=['Img_ID', 'Average Mitochondrial Area', 'Average Mitochondrial Perimeter',
-                               'Branch Number per Cell','Branch Length per Cell','Average Node Degree','Average Membrane Potential'])
+    df = pd.DataFrame(columns=['Img_ID', 
+                               'Average Mitochondrial Area', 
+                               'Average Mitochondrial Perimeter',
+                               'Branch Number per Cell',
+                               'Branch Length per Cell',
+                               'Average Node Degree',
+                               'Average Membrane Potential'])
         
     for i in range(len(list_of_name)):
         folder_path = root_path + '/' + list_of_name[i]
@@ -188,11 +175,14 @@ def batch_analysis(root_path: str):
 
 
 def load_args():
-    pass
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument("-i", "--input_dir",
+    help="Input folder path")
+
+    return arg_parser.parse_args()
 
 
 if __name__ == "__main__":
     args = load_args()
-
-    create_folder_for_each_czi(args.path)
-    batch_analysis(args.path)
+    create_folder_for_each_czi(args.input_dir)
+    batch_analysis(args.input_dir)
