@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Union, List, Dict
 from argparse import ArgumentParser
+from collections import namedtuple
 
 from scipy import ndimage as nd
 import pandas as pd
@@ -12,14 +13,7 @@ from skimage.exposure import adjust_sigmoid
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
-
-
-def create_folder_for_each_czi(folder_path: Union[str, Path],
-                               created_dirs_path: Union[str, Path] = "./"):
-    list_of_name = [fn.stem for fn in Path(folder_path).iterdir() if fn.suffix == ".czi"]
-    for name in list_of_name:
-        Path(created_dirs_path, name).mkdir(parents=True, exist_ok=True)
-    return list_of_name
+from src.utils import create_folder_for_each_czi
 
 
 def tmrm_mask(folder_path: str):
@@ -54,7 +48,7 @@ def nucleus_mask(folder_path: str):
     denoise_nucleus2 = cv2.dilate(denoise_nucleus, kernel, iterations=2)
 
     ret_nucleus, thresh_nucleus = cv2.threshold(denoise_nucleus2, np.min(denoise_nucleus2), np.max(denoise_nucleus2), cv2.THRESH_OTSU)
-    nucleus_2 = adjust_sigmoid (denoise_nucleus2, (ret_tmrm/np.max(denoise_nucleus2))+0.04, 7)
+    nucleus_2 = adjust_sigmoid (denoise_nucleus2, (ret_nucleus/np.max(denoise_nucleus2))+0.04, 7)
     nucleus_2 = np.uint8(nucleus_2)
     ret_nucleus2, binary_nucleus = cv2.threshold(nucleus_2, 0, 255, cv2.THRESH_OTSU)
     binary_nucleus = cv2.dilate(binary_nucleus, kernel, iterations=10)
@@ -70,9 +64,22 @@ def folder_all(rootpath: str) -> List[Path]:
     return folder_list
 
 
-def particle_skeleton_analysis(binary2: np.ndarray, 
+skn_results_fields = {'img_id': 'Img_ID', 
+                      'aver_mito_area': 'Average Mitochondrial Area', 
+                      'aver_mito_perimeter': 'Average Mitochondrial Perimeter',
+                      'branches_num_per_cell': 'Branch Number per Cell',
+                      'branches_len_per_cell': 'Branch Length per Cell',
+                      'aver_node_degree': 'Average Node Degree',
+                      'average_membrane_potential': 'Average Membrane Potential'}
+
+SkeletonResult = namedtuple("skeleton_result",
+                            list(skn_results_fields.keys()))
+
+
+def particle_skeleton_analysis(img_id: str,
+                               binary2: np.ndarray, 
                                tmrm_img: np.ndarray, 
-                               binary_nucleus: np.ndarray):
+                               binary_nucleus: np.ndarray) -> SkeletonResult:
     
     pixel_size = 1
     ###### Particle Analysis ######
@@ -124,26 +131,26 @@ def particle_skeleton_analysis(binary2: np.ndarray,
 
     ###----------- Average membrane potential -----------### 
     average_membrane_potential = np.sum(tmrm_img[np.where(binary2==255)])/total_mito_area
-    
-    return(aver_mito_area,aver_mito_perimeter,branches_num_per_cell,branches_len_per_cell,aver_node_degree,average_membrane_potential)
+
+    res = SkeletonResult(img_id=img_id,
+                         aver_mito_area=aver_mito_area,
+                         aver_mito_perimeter=aver_mito_perimeter,
+                         branches_num_per_cell=branches_num_per_cell,
+                         branches_len_per_cell=branches_len_per_cell,
+                         aver_node_degree=aver_node_degree,
+                         average_membrane_potential=average_membrane_potential)
+    return res
 
 
-def batch_analysis(root_path: str):
-    
+def batch_analysis(root_path: str) -> pd.DataFrame:
     list_of_name = folder_all(root_path)
     print(list_of_name[0].name)
-    df = pd.DataFrame(columns=['Img_ID', 
-                               'Average Mitochondrial Area', 
-                               'Average Mitochondrial Perimeter',
-                               'Branch Number per Cell',
-                               'Branch Length per Cell',
-                               'Average Node Degree',
-                               'Average Membrane Potential'])
+    result_dic = {}
         
     for i, folder_path in enumerate(list_of_name):
-        tmrm_path = folder_path + '/'+folder_path.split('/')[-1] +'0000.tif'
-        mask_path = folder_path +'/'+folder_path.split('/')[-1] + 'mask.png'        
-        nucleus_path = folder_path + '/'+folder_path.split('/')[-1] +'nucleusmask.png'  
+        tmrm_path = folder_path  / f"{folder_path.stem}0000.tif"
+        mask_path = folder_path  / f"{folder_path.stem}mask.png"       
+        nucleus_path = folder_path   / f"{folder_path.stem}nucleusmask.png"
 
         print(folder_path)
         tmrm_img = cv2.imread(tmrm_path,0)
@@ -151,8 +158,11 @@ def batch_analysis(root_path: str):
         binary_nucleus = cv2.imread(nucleus_path,0)
         #tmrm_img, binary2 = tmrm_mask(folder_path)
         #binary_nucleus = nucleus_mask(folder_path)
-        df.loc[i] = [list_of_name[i].split('/')[-1]] + list(particle_skeleton_analysis(binary2, tmrm_img, binary_nucleus))
+        result_dic[i] = particle_skeleton_analysis(folder_path.stem, binary2, tmrm_img, binary_nucleus)
     
+    # this could make the fields consistent
+    df = pd.DataFrame({skn_results_fields[k]: 
+                       v._asdict() for k, v in result_dic.items()})
     summary_dir = root_path + '/all_mito/'
     if not os.path.isdir(summary_dir):
         os.makedirs(summary_dir)
@@ -166,7 +176,6 @@ def load_args():
     arg_parser = ArgumentParser()
     arg_parser.add_argument("-i", "--input_dir",
     help="Input folder path")
-
     return arg_parser.parse_args()
 
 

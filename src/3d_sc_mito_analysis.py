@@ -1,30 +1,13 @@
+import os
+
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from skimage import morphology
-from skimage.morphology import skeletonize
-import os
-import csv
-from itertools import zip_longest
-import scipy
-from scipy import ndimage
+
 import pandas as pd
-from skimage import morphology
-import scipy.ndimage as ndi
-from skimage import img_as_ubyte
 from skimage.exposure import adjust_sigmoid
-import skan
-#from skan import skeleton_to_csgraph
-from skan import Skeleton, summarize
-from skan import draw
-import math
-from scipy import stats
-import seaborn as sns
 from skimage.filters import unsharp_mask
 import skimage
-from skimage.morphology import square
-import pandas as pd
 
 
 def threshold_plus(img_path):

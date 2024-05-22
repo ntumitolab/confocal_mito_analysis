@@ -31,18 +31,8 @@ from skimage.morphology import skeletonize
 from skimage import img_as_ubyte
 from skimage.exposure import adjust_sigmoid
 
+from src.utils import create_folder_for_each_czi
 
-def create_folder_for_each_czi(path):
-    list_of_name =[]
-    for file in os.listdir(path): 
-        file_path = os.path.join(path, file) 
-        if os.path.splitext(file_path)[1]=='.czi': 
-            list_of_name.append(file_path[:-4])
-            
-    for name in list_of_name:
-        if not os.path.exists(name):
-            os.makedirs(name)
-    return list_of_name
             
 def tmrm_mask(folder_path):
     tmrm_n = '/'+folder_path.split('/')[-1] +'0000.tif'
