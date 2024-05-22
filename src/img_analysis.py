@@ -32,10 +32,10 @@ from skimage import img_as_ubyte
 from skimage.exposure import adjust_sigmoid
 
 
-def create_folder_for_each_czi(path):
+def create_folder_for_each_czi(folder_path: str):
     list_of_name =[]
-    for file in os.listdir(path): 
-        file_path = os.path.join(path, file) 
+    for file in os.listdir(folder_path): 
+        file_path = os.path.join(folder_path, file) 
         if os.path.splitext(file_path)[1]=='.czi': 
             list_of_name.append(file_path[:-4])
             
@@ -43,8 +43,9 @@ def create_folder_for_each_czi(path):
         if not os.path.exists(name):
             os.makedirs(name)
     return list_of_name
-            
-def tmrm_mask(folder_path):
+
+
+def tmrm_mask(folder_path: str):
     tmrm_n = '/'+folder_path.split('/')[-1] +'0000.tif'
     tmrm_path = folder_path + tmrm_n
     tmrm = cv2.imread(tmrm_path,0)
@@ -64,7 +65,8 @@ def tmrm_mask(folder_path):
     plt.imsave(mask_path,binary_tmrm,cmap="gray")
     return tmrm, binary_tmrm
 
-def nucleus_mask(folder_path):
+
+def nucleus_mask(folder_path: str):
     nucleus_n = '/'+folder_path.split('/')[-1] +'0001.tif'
     nucleus_path = folder_path + nucleus_n
     nucleus = cv2.imread(nucleus_path,0)
@@ -85,7 +87,7 @@ def nucleus_mask(folder_path):
     return binary_nucleus
 
 
-def folder_all(rootpath):
+def folder_all(rootpath: str):
     well_list = ['A','B','C','D','E','F','G','H']
     folder_list = []
     for i in range(len(well_list)):
@@ -95,7 +97,10 @@ def folder_all(rootpath):
             
     return folder_list
 
-def particle_skeleton_analysis(binary2, tmrm_img, binary_nucleus):
+
+def particle_skeleton_analysis(binary2: np.ndarray, 
+                               tmrm_img: np.ndarray, 
+                               binary_nucleus: np.ndarray):
     
     pixel_size = 1
     ###### Particle Analysis ######
@@ -148,10 +153,10 @@ def particle_skeleton_analysis(binary2, tmrm_img, binary_nucleus):
     ###----------- Average membrane potential -----------### 
     average_membrane_potential = np.sum(tmrm_img[np.where(binary2==255)])/total_mito_area
     
-   
     return(aver_mito_area,aver_mito_perimeter,branches_num_per_cell,branches_len_per_cell,aver_node_degree,average_membrane_potential)
 
-def batch_analysis(root_path):
+
+def batch_analysis(root_path: str):
     
     list_of_name = folder_all(root_path)
     print(list_of_name[0].split('/')[-1])
@@ -182,4 +187,12 @@ def batch_analysis(root_path):
     return df
 
 
-    
+def load_args():
+    pass
+
+
+if __name__ == "__main__":
+    args = load_args()
+
+    create_folder_for_each_czi(args.path)
+    batch_analysis(args.path)
