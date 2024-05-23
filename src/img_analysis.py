@@ -13,173 +13,142 @@ from skimage.exposure import adjust_sigmoid
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
-from src.utils import create_folder_for_each_czi
+from src.utils import create_folder_for_each_czi, list_all_folders, list_tif_in_dir
+from src.skeleton import SkeletonAnalyzer
+from src.masks import get_binary_tmrm, get_binary_nucleus, get_binary_img
+
+from tqdm import tqdm
 
 
-def tmrm_mask(folder_path: str):
-    tmrm_n = '/'+folder_path.split('/')[-1] +'0000.tif'
-    tmrm_path = folder_path + tmrm_n
-    tmrm = cv2.imread(tmrm_path,0)
-    print(tmrm_path)
-    
-    denoise_tmrm = denoise_tv_chambolle(tmrm, weight = 0.05)
-    denoise_tmrm2 = np.uint8((denoise_tmrm*(255/np.max(denoise_tmrm))).astype(int))
-    kernel = np.ones((3, 3), np.uint8)
-    denoise_tmrm2 = cv2.erode(denoise_tmrm2, kernel, iterations=3)
-
-    ret_tmrm, thresh_tmrm = cv2.threshold(denoise_tmrm2, np.min(denoise_tmrm2), np.max(denoise_tmrm2), cv2.THRESH_OTSU)
-    tmrm_2 = adjust_sigmoid (denoise_tmrm2, (ret_tmrm/np.max(denoise_tmrm2))+0.04, 7)
-    tmrm_2 = np.uint8(tmrm_2)
-    ret_tmrm2, binary_tmrm = cv2.threshold(tmrm_2, 0, 255, cv2.THRESH_OTSU)
-    
-    mask_path = folder_path +'/'+folder_path.split('/')[-1] + 'mask.png'
-    plt.imsave(mask_path,binary_tmrm,cmap="gray")
-    return tmrm, binary_tmrm
-
-
-def nucleus_mask(folder_path: str):
-    nucleus_n = '/'+folder_path.split('/')[-1] +'0001.tif'
-    nucleus_path = folder_path + nucleus_n
-    nucleus = cv2.imread(nucleus_path,0)
-    print(nucleus_path)
-
-    denoise_nucleus = nd.median_filter(nucleus, 3)
-    kernel = np.ones((3, 3), np.uint8)
-    denoise_nucleus2 = cv2.dilate(denoise_nucleus, kernel, iterations=2)
-
-    ret_nucleus, thresh_nucleus = cv2.threshold(denoise_nucleus2, np.min(denoise_nucleus2), np.max(denoise_nucleus2), cv2.THRESH_OTSU)
-    nucleus_2 = adjust_sigmoid (denoise_nucleus2, (ret_nucleus/np.max(denoise_nucleus2))+0.04, 7)
-    nucleus_2 = np.uint8(nucleus_2)
-    ret_nucleus2, binary_nucleus = cv2.threshold(nucleus_2, 0, 255, cv2.THRESH_OTSU)
-    binary_nucleus = cv2.dilate(binary_nucleus, kernel, iterations=10)
-    binary_nucleus = cv2.erode(binary_nucleus, kernel, iterations=2)
-    mask_path = folder_path +'/'+folder_path.split('/')[-1] + 'nucleusmask.png'
-    plt.imsave(mask_path,binary_nucleus,cmap="gray")
-    return binary_nucleus
-
-
-def folder_all(rootpath: str) -> List[Path]:
-    well_list = ['A','B','C','D','E','F','G','H']
-    folder_list = [Path(rootpath, f"{w}{j}") for w in well_list for j in range(1, 13)]
-    return folder_list
-
-
-skn_results_fields = {'img_id': 'Img_ID', 
-                      'aver_mito_area': 'Average Mitochondrial Area', 
-                      'aver_mito_perimeter': 'Average Mitochondrial Perimeter',
-                      'branches_num_per_cell': 'Branch Number per Cell',
-                      'branches_len_per_cell': 'Branch Length per Cell',
-                      'aver_node_degree': 'Average Node Degree',
-                      'average_membrane_potential': 'Average Membrane Potential'}
-
-SkeletonResult = namedtuple("skeleton_result",
-                            list(skn_results_fields.keys()))
-
-
-def particle_skeleton_analysis(img_id: str,
-                               binary2: np.ndarray, 
-                               tmrm_img: np.ndarray, 
-                               binary_nucleus: np.ndarray) -> SkeletonResult:
-    
-    pixel_size = 1
-    ###### Particle Analysis ######
-        
-    ###----------- total mito counts -----------###
-    cnts, hier = cv2.findContours(binary2.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    total_mito_counts = len(cnts)
-    
-    ###----------- total nucleus counts -----------###
-    cnts_n, hier_ = cv2.findContours(binary_nucleus.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    len_n = [len(i) for i in cnts_n if len(i)>10]
-    total_nucleus_counts = len(len_n)
-
-    ###----------- total mito area -----------###
-    total_mito_area = len(list(np.where(binary2 == 255)[0]))*pixel_size*pixel_size
-    
-    ###----------- average mito area -----------###
-    aver_mito_area = total_mito_area/total_nucleus_counts
-    
-    ###----------- average mito perimeter -----------###
-    cnts_pier, hier_pier = cv2.findContours(binary2.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-    perimeter_list = [(cv2.arcLength(c, True)*pixel_size) for c in cnts_pier]
-    aver_mito_perimeter = sum(perimeter_list)/total_nucleus_counts
-    
-    
-    ###### Skeleton Analysis ######
-    binary3 = binary2.copy()
-    binary3[np.where(binary3==255)]=1
-    
-    skeleton = skeletonize(binary3)
-    #pixel_graph, coordinates = skan.skeleton_to_csgraph(skeleton)
-    branch_data = summarize(Skeleton(skeleton))
-    
-    ###----------- Branches num./len. per cell -----------###
-    branch_len = list(branch_data['branch-distance'])
-    branches_num_per_cell = len(branch_len)/total_nucleus_counts
-    branches_len_per_cell = sum(branch_len)*pixel_size/total_nucleus_counts
-    
-    ###----------- Average node degrees -----------### 
-    
-    node_id_src = list(branch_data['node-id-src'])
-    node_id_dst = list(branch_data['node-id-dst'])
-    node_id_cnts = node_id_src + node_id_dst
-    
-    count_each = np.array([node_id_cnts.count(i) for i in node_id_cnts])
-    degree_unique = list(count_each[list(np.unique(node_id_cnts, return_index=True)[1])])
-    
-    aver_node_degree = sum(degree_unique)/len(degree_unique)
-
-    ###----------- Average membrane potential -----------### 
-    average_membrane_potential = np.sum(tmrm_img[np.where(binary2==255)])/total_mito_area
-
-    res = SkeletonResult(img_id=img_id,
-                         aver_mito_area=aver_mito_area,
-                         aver_mito_perimeter=aver_mito_perimeter,
-                         branches_num_per_cell=branches_num_per_cell,
-                         branches_len_per_cell=branches_len_per_cell,
-                         aver_node_degree=aver_node_degree,
-                         average_membrane_potential=average_membrane_potential)
-    return res
-
-
-def batch_analysis(root_path: str) -> pd.DataFrame:
-    list_of_name = folder_all(root_path)
-    print(list_of_name[0].name)
+def single_cell_mito_analysis(input_dir_path, 
+                              sel_levels, 
+                              fig_ext=".png", 
+                              figsize=(6.4, 4.8), 
+                              dpi=500):
     result_dic = {}
-        
-    for i, folder_path in enumerate(list_of_name):
+    sel_fields = ['Cell ID', 
+                  'Total Counts of Mitochondria', 
+                  'Total Mitochondrial Area', 
+                  'Average Mitochondrial Area', 
+                  'Average Mitochondrial Perimeter',
+                  'Average Mitocondrial Solidity',
+                  'Max Mitocondrial Area/Total Mitocondrial Area',
+                  'Branch Number per Mitochondria',
+                  'Branch Length per Mitochondria',
+                  'Average Node Degree']
+    
+    list_of_name = list_tif_in_dir(input_dir_path, sel_levels=sel_levels)
+    summary_dir = Path(input_dir_path) / "all_mito"
+    summary_dir.mkdir(exist_ok=True)
+
+
+    for i, folder_path in tqdm(enumerate(list_of_name)):
+        img = cv2.imread(folder_path, 0)
+        img_b, binary2 = get_binary_img(img)
+        skeleton_analyzer = SkeletonAnalyzer(binary2, tmrm_img=None, binary_nucleus=None, cell_id=folder_path.stem)
+
+        result_dic[i] = skeleton_analyzer.get_results(sel_fields)
+        skeleton_analyzer.plot_skeleton(original_img=img_b, 
+                                        skeleton_path=(summary_dir / "skeleton").with_suffix(fig_ext),
+                                        skeleton_mito_path=(summary_dir / "skeleton mito").with_suffix(fig_ext),
+                                        figsize=figsize,
+                                        dpi=dpi)
+
+    df = pd.DataFrame(result_dic).set_index('Cell ID')
+    
+
+    df.to_csv(summary_dir / "summary_feature.csv")
+    return df
+
+
+def population_mito_analysis(input_dir_path):
+    list_of_name = create_folder_for_each_czi(input_dir_path)
+    result_dic = {}
+    sel_fields = ['Img ID', 
+                  'Total Counts of Mitochondria',
+                  'Average Mitochondrial Area',
+                  'Average Mitochondrial Area per Cell',
+                  'Average Mitochondrial Perimeter',
+                  'Average Mitochondrial Perimeter per Cell',
+                  'Branch Number per Mitochondria',
+                  'Branch Length per Mitochondria',
+                  'Branch Number per Cell',
+                  'Branch Length per Cell',
+                  'Average Node Degree',
+                  'Average Membrane Potential']
+    
+    for i, folder_path in tqdm(enumerate(list_of_name)):
         tmrm_path = folder_path  / f"{folder_path.stem}0000.tif"
         mask_path = folder_path  / f"{folder_path.stem}mask.png"       
         nucleus_path = folder_path   / f"{folder_path.stem}nucleusmask.png"
+        tmrm_img = cv2.imread(tmrm_path,0)
+        binary2 = get_binary_tmrm(tmrm_img, mask_img_path=mask_path)
+        nucleus_img = cv2.imread(nucleus_path,0)
+        binary_nucleus = get_binary_nucleus(nucleus_img, mask_img_path=nucleus_path)
 
-        print(folder_path)
+        skeleton_analyzer = SkeletonAnalyzer(binary2, tmrm_img, binary_nucleus, img_id=folder_path.stem)
+        result_dic[i] = skeleton_analyzer.get_results(sel_fields)
+    df = pd.DataFrame(result_dic).set_index('Img ID')
+    summary_dir = Path(input_dir_path) / "all_mito"
+    summary_dir.mkdir(exist_ok=True)
+
+    df.to_csv(summary_dir / "summary_feature.csv")
+    return df
+
+
+def tmrm_mito_analysis(input_dir_path):
+    list_of_name = list_all_folders(input_dir_path)
+    result_dic = {}
+    sel_fields = ['Img ID', 
+                  'Average Mitochondrial Area', 
+                  'Average Mitochondrial Perimeter',
+                  'Branch Number per Cell',
+                  'Branch Length per Cell',
+                  'Average Node Degree',
+                  'Average Membrane Potential']
+    for i, folder_path in tqdm(enumerate(list_of_name)):
+        tmrm_path = folder_path  / f"{folder_path.stem}0000.tif"
+        mask_path = folder_path  / f"{folder_path.stem}mask.png"       
+        nucleus_path = folder_path   / f"{folder_path.stem}nucleusmask.png"
         tmrm_img = cv2.imread(tmrm_path,0)
         binary2 = cv2.imread(mask_path,0)
         binary_nucleus = cv2.imread(nucleus_path,0)
-        #tmrm_img, binary2 = tmrm_mask(folder_path)
-        #binary_nucleus = nucleus_mask(folder_path)
-        result_dic[i] = particle_skeleton_analysis(folder_path.stem, binary2, tmrm_img, binary_nucleus)
-    
-    # this could make the fields consistent
-    df = pd.DataFrame({skn_results_fields[k]: 
-                       v._asdict() for k, v in result_dic.items()})
-    summary_dir = root_path + '/all_mito/'
-    if not os.path.isdir(summary_dir):
-        os.makedirs(summary_dir)
-        
-    df = df.set_index('Img_ID') 
-    df.to_csv((summary_dir+'summary_feature.csv'))
+
+        skeleton_analyzer = SkeletonAnalyzer(binary2, tmrm_img, binary_nucleus, img_id=folder_path.stem)
+        result_dic[i] = skeleton_analyzer.get_results(sel_fields)
+    df = pd.DataFrame(result_dic).set_index('Img ID')
+    summary_dir = Path(input_dir_path) / "all_mito"
+    summary_dir.mkdir(exist_ok=True)
+
+    df.to_csv(summary_dir / "summary_feature.csv")
     return df
 
 
 def load_args():
     arg_parser = ArgumentParser()
     arg_parser.add_argument("-i", "--input_dir",
-    help="Input folder path")
+                            help="Input folder path")
+    arg_parser.add_argument("-m", "--method",
+                            choices=["tmrm",
+                                     "population",
+                                     "sc"])
+    arg_parser.add_argument("-e", "--exp", nargs="+", default=None)
+    arg_parser.add_argument("-d", "--dish", nargs="+", default=None)
+    arg_parser.add_argument("-f", "--frame", nargs="+", default=None)
     return arg_parser.parse_args()
 
 
 if __name__ == "__main__":
     args = load_args()
-    create_folder_for_each_czi(args.input_dir)
-    batch_analysis(args.input_dir)
+
+    if args.method.lower() == "tmrm":
+        create_folder_for_each_czi(args.input_dir)
+        tmrm_mito_analysis(args.input_dir)
+    elif args.method.lower() == "population":
+        population_mito_analysis(args.input_dir)
+    elif args.method.lower() == "sc":
+        if args.exp is None and args.dish is None and args.frame is None:
+            sel_levels = None
+        else:
+            sel_levels = [args.exp, args.dish, args.frame]
+        single_cell_mito_analysis(args.input_dir, sel_levels)
