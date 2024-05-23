@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Union, List, Dict
 from argparse import ArgumentParser
 from collections import namedtuple
+from itertools import product
 
 from scipy import ndimage as nd
 import pandas as pd
@@ -38,14 +39,15 @@ def single_cell_mito_analysis(input_dir_path,
                   'Average Node Degree']
     
     list_of_name = list_tif_in_dir(input_dir_path, sel_levels=sel_levels)
+    print(f"Found {list_of_name}")
+
     summary_dir = Path(input_dir_path) / "all_mito"
     summary_dir.mkdir(exist_ok=True)
 
-
-    for i, folder_path in tqdm(enumerate(list_of_name)):
-        img = cv2.imread(folder_path, 0)
+    for i, file_path in tqdm(enumerate(list_of_name), total=len(list_of_name)):
+        img = cv2.imread(str(file_path.resolve()), 0)
         img_b, binary2 = get_binary_img(img)
-        skeleton_analyzer = SkeletonAnalyzer(binary2, tmrm_img=None, binary_nucleus=None, cell_id=folder_path.stem)
+        skeleton_analyzer = SkeletonAnalyzer(binary2, tmrm_img=None, binary_nucleus=None, default_pixel_size=0.035, cell_id=file_path.stem)
 
         result_dic[i] = skeleton_analyzer.get_results(sel_fields)
         skeleton_analyzer.plot_skeleton(original_img=img_b, 
@@ -54,9 +56,8 @@ def single_cell_mito_analysis(input_dir_path,
                                         figsize=figsize,
                                         dpi=dpi)
 
-    df = pd.DataFrame(result_dic).set_index('Cell ID')
+    df = pd.DataFrame(result_dic).T.set_index('Cell ID')
     
-
     df.to_csv(summary_dir / "summary_feature.csv")
     return df
 
@@ -77,18 +78,18 @@ def population_mito_analysis(input_dir_path):
                   'Average Node Degree',
                   'Average Membrane Potential']
     
-    for i, folder_path in tqdm(enumerate(list_of_name)):
+    for i, folder_path in tqdm(enumerate(list_of_name), total=len(list_of_name)):
         tmrm_path = folder_path  / f"{folder_path.stem}0000.tif"
         mask_path = folder_path  / f"{folder_path.stem}mask.png"       
         nucleus_path = folder_path   / f"{folder_path.stem}nucleusmask.png"
-        tmrm_img = cv2.imread(tmrm_path,0)
+        tmrm_img = cv2.imread(str(tmrm_path.resolve()),0)
         binary2 = get_binary_tmrm(tmrm_img, mask_img_path=mask_path)
-        nucleus_img = cv2.imread(nucleus_path,0)
+        nucleus_img = cv2.imread(str(nucleus_path.resolve()),0)
         binary_nucleus = get_binary_nucleus(nucleus_img, mask_img_path=nucleus_path)
 
         skeleton_analyzer = SkeletonAnalyzer(binary2, tmrm_img, binary_nucleus, img_id=folder_path.stem)
         result_dic[i] = skeleton_analyzer.get_results(sel_fields)
-    df = pd.DataFrame(result_dic).set_index('Img ID')
+    df = pd.DataFrame(result_dic).T.set_index('Img ID')
     summary_dir = Path(input_dir_path) / "all_mito"
     summary_dir.mkdir(exist_ok=True)
 
@@ -106,17 +107,17 @@ def tmrm_mito_analysis(input_dir_path):
                   'Branch Length per Cell',
                   'Average Node Degree',
                   'Average Membrane Potential']
-    for i, folder_path in tqdm(enumerate(list_of_name)):
+    for i, folder_path in tqdm(enumerate(list_of_name), total=len(list_of_name)):
         tmrm_path = folder_path  / f"{folder_path.stem}0000.tif"
         mask_path = folder_path  / f"{folder_path.stem}mask.png"       
         nucleus_path = folder_path   / f"{folder_path.stem}nucleusmask.png"
-        tmrm_img = cv2.imread(tmrm_path,0)
-        binary2 = cv2.imread(mask_path,0)
-        binary_nucleus = cv2.imread(nucleus_path,0)
+        tmrm_img = cv2.imread(str(tmrm_path.resolve()),0)
+        binary2 = cv2.imread(str(mask_path.resolve()),0)
+        binary_nucleus = cv2.imread(str(nucleus_path.resolve()),0)
 
-        skeleton_analyzer = SkeletonAnalyzer(binary2, tmrm_img, binary_nucleus, img_id=folder_path.stem)
+        skeleton_analyzer = SkeletonAnalyzer(binary2, tmrm_img, binary_nucleus, default_pixel_size=1, img_id=folder_path.stem)
         result_dic[i] = skeleton_analyzer.get_results(sel_fields)
-    df = pd.DataFrame(result_dic).set_index('Img ID')
+    df = pd.DataFrame(result_dic).T.set_index('Img ID')
     summary_dir = Path(input_dir_path) / "all_mito"
     summary_dir.mkdir(exist_ok=True)
 
@@ -135,6 +136,7 @@ def load_args():
     arg_parser.add_argument("-e", "--exp", nargs="+", default=None)
     arg_parser.add_argument("-d", "--dish", nargs="+", default=None)
     arg_parser.add_argument("-f", "--frame", nargs="+", default=None)
+    arg_parser.add_argument("-y", "--dye", nargs="+", default=["mitotracker"])
     return arg_parser.parse_args()
 
 
@@ -147,8 +149,8 @@ if __name__ == "__main__":
     elif args.method.lower() == "population":
         population_mito_analysis(args.input_dir)
     elif args.method.lower() == "sc":
-        if args.exp is None and args.dish is None and args.frame is None:
+        if args.exp is None and args.dish is None and args.frame is None and args.dye == []:
             sel_levels = None
         else:
-            sel_levels = [args.exp, args.dish, args.frame]
+            sel_levels = [[f"{exp} {dish}-{frame}" for exp, dish, frame in product(args.exp, args.dish, args.frame)], args.dye]
         single_cell_mito_analysis(args.input_dir, sel_levels)

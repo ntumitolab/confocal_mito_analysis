@@ -7,12 +7,14 @@ from matplotlib import pyplot as plt
 from skan import draw
 from enum import Enum
 from typing import List
+from functools import cached_property
 
 
 class ResultFields(Enum):
     img_id = "Img ID"
     cell_id = "Cell ID"
     total_mito_counts = "Total Counts of Mitochondria"
+    total_mito_area = "Total Mitochondrial Area"
     aver_mito_area = 'Average Mitochondrial Area'
     aver_mito_area_per_cell = 'Average Mitochondrial Area per Cell'
     aver_mito_perimeter = 'Average Mitochondrial Perimeter'
@@ -21,7 +23,7 @@ class ResultFields(Enum):
     branches_len_per_mito = 'Branch Length per Mitochondria'
     branches_num_per_cell = 'Branch Number per Cell'
     branches_len_per_cell = 'Branch Length per Cell'
-    aver_node_degree = 'Average Node Degree',
+    aver_node_degree = 'Average Node Degree'
     average_membrane_potential = 'Average Membrane Potential'
     max_to_total_mito_area_ratio = "Max Mitocondrial Area/Total Mitocondrial Area"
     aver_mito_solidity = 'Average Mitocondrial Solidity'
@@ -53,8 +55,10 @@ class SkeletonAnalyzer:
     def get_results(self,
                     fields: List[str]) -> pd.Series:
         res_dic = {}
+        result_fields = [field.name for field in ResultFields]
+
         for field in fields:
-            if field in ResultFields:
+            if field in result_fields:
                 attr_name = field
                 displayed_name = getattr(ResultFields, field).name
             else:
@@ -88,20 +92,20 @@ class SkeletonAnalyzer:
             self._total_mito_counts, self._mito_pos = self.calc_total_mito_counts(self.binary2)
         return self._mito_pos
     
-    @property
+    @cached_property
     def aver_mito_area(self):
         return self.calc_aver_mito_area()
     
-    @property
+    @cached_property
     def aver_mito_area_per_cell(self):
         return self.calc_aver_mito_area_per_cell()
 
-    @property
+    @cached_property
     def total_mito_area(self):
         return self.calc_total_mito_area(self.binary2, self.default_pixel_size)
     
-    @property
-    def total_nuc_counts(self):
+    @cached_property
+    def total_nucleus_counts(self):
         return self.calc_total_nuc_counts(self.binary_nucleus)
     
     @property
@@ -120,9 +124,13 @@ class SkeletonAnalyzer:
     
     @property
     def branch_len(self):
+        return list(self.branch_data['branch-distance'])
+    
+    @property
+    def branch_data(self):
         if self._branch_data is None:
             self._branch_data = self.get_branch_data()
-        return list(self._branch_data['branch-distance'])
+        return self._branch_data
     
     @property
     def branches_num_per_mito(self):
@@ -142,13 +150,13 @@ class SkeletonAnalyzer:
 
     @staticmethod
     def calc_total_mito_counts(binary2):
-        cnts, hier = cv2.findContours(binary2.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        cnts, hier = cv2.findContours(binary2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         total_mito_counts = len(cnts)
         return total_mito_counts, cnts
     
     @staticmethod
     def calc_total_nuc_counts(binary_nucleus):
-        cnts_n, hier_ = cv2.findContours(binary_nucleus.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        cnts_n, hier_ = cv2.findContours(binary_nucleus, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         len_n = [len(i) for i in cnts_n if len(i)>10]
         total_nucleus_counts = len(len_n)
         return total_nucleus_counts
@@ -157,12 +165,16 @@ class SkeletonAnalyzer:
     def calc_total_mito_area(binary2, pixel_size=1):
         return  len(list(np.where(binary2 == 255)[0]))*pixel_size*pixel_size
     
+    @property
+    def max_to_total_mito_area_ratio(self):
+        return self.calc_max_to_total_mito_area_ratio()
+    
     def calc_max_to_total_mito_area_ratio(self):
         return max(self.mito_area_list) / self.total_mito_area
     
     @staticmethod
     def calc_aver_mito_perimeter(binary2, pixel_size=1):
-        cnts_pier, hier_pier = cv2.findContours(binary2.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        cnts_pier, hier_pier = cv2.findContours(binary2, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
         perimeter_list = [(cv2.arcLength(c, True)*pixel_size) for c in cnts_pier]
         return sum(perimeter_list)/len(perimeter_list), perimeter_list
     
@@ -184,7 +196,7 @@ class SkeletonAnalyzer:
         return self.total_mito_area / self.total_mito_counts
 
     def calc_aver_mito_area_per_cell(self):
-        return self.total_mito_area / self.total_nuc_counts
+        return self.total_mito_area / self.total_nucleus_counts
     
     def calc_aver_mito_perimeter_per_cell(self):
         return sum(self.perimeter_list)/ self.total_nucleus_counts
@@ -195,7 +207,7 @@ class SkeletonAnalyzer:
     @property
     def skeleton(self):
         if self._skeleton is None:
-            self.get_skeleton(self.binary2)
+            self._skeleton = self.get_skeleton(self.binary2)
         return self._skeleton
     
     @staticmethod
@@ -209,6 +221,10 @@ class SkeletonAnalyzer:
         #pixel_graph, coordinates = skan.skeleton_to_csgraph(skeleton)
         branch_data = summarize(Skeleton(self.skeleton))
         return branch_data
+    
+    @cached_property
+    def aver_node_degree(self):
+        return self.calc_avg_node_degree()
     
     def calc_avg_node_degree(self):
         node_id_src = list(self.branch_data['node-id-src'])

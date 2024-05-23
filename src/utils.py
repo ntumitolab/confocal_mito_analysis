@@ -3,11 +3,10 @@ from pathlib import Path
 from itertools import product
 
 
-def create_folder_for_each_czi(folder_path: Union[str, Path],
-                               created_dirs_path: Union[str, Path] = "./"):
-    list_of_name = [fn.stem for fn in Path(folder_path).iterdir() if fn.suffix == ".czi"]
+def create_folder_for_each_czi(folder_path: Union[str, Path]):
+    list_of_name = [Path(folder_path, fn.stem)  for fn in Path(folder_path).iterdir() if fn.suffix == ".czi"]
     for name in list_of_name:
-        Path(created_dirs_path, name).mkdir(parents=True, exist_ok=True)
+        Path(name).mkdir(parents=True, exist_ok=True)
     return list_of_name
 
 
@@ -36,9 +35,10 @@ def list_tif_in_dir(folder_path: Union[str, Path],
     Get all the tif file in a folder and return the tiff files' paths
     """ 
     if sel_levels is None:
-        return list(Path(folder_path).rglob(".tif"))
-    valid_dirs = [Path(d) for d in product(*sel_levels)]
+        return list(Path(folder_path).rglob("*.tif"))
+    valid_dirs = [Path(folder_path) / Path(*d) for d in product(*sel_levels)]
     file_names = []
+    print(f"Finding files from {valid_dirs}")
     for vdir in valid_dirs:
-        file_names.extend(list(vdir.rglob(".tif")))
+        file_names.extend(list(vdir.rglob("*.tif")))
     return file_names
