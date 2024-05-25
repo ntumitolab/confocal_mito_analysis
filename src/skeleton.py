@@ -27,7 +27,7 @@ class ResultFields(Enum):
     average_membrane_potential = 'Average Membrane Potential'
     max_to_total_mito_area_ratio = "Max Mitocondrial Area/Total Mitocondrial Area"
     aver_mito_solidity = 'Average Mitocondrial Solidity'
-    
+
 
 class SkeletonAnalyzer:
     def __init__(self,

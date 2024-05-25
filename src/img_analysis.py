@@ -132,8 +132,10 @@ def load_args():
     arg_parser.add_argument("-m", "--method",
                             choices=["tmrm",
                                      "population",
-                                     "sc"])
-    arg_parser.add_argument("-e", "--exp", nargs="+", default=None)
+                                     "sc"],
+                            help="Used method name, choices are tmrm, population, and sc")
+    arg_parser.add_argument("-e", "--exp", nargs="+", default=None,
+                            help="")
     arg_parser.add_argument("-d", "--dish", nargs="+", default=None)
     arg_parser.add_argument("-f", "--frame", nargs="+", default=None)
     arg_parser.add_argument("-y", "--dye", nargs="+", default=["mitotracker"])
