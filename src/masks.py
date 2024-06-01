@@ -12,7 +12,8 @@ def get_binary_tmrm(tmrm, mask_img_path=None):
     kernel = np.ones((3, 3), np.uint8)
     denoise_tmrm2 = cv2.erode(denoise_tmrm2, kernel, iterations=3)
 
-    ret_tmrm, thresh_tmrm = cv2.threshold(denoise_tmrm2, np.min(denoise_tmrm2), np.max(denoise_tmrm2), cv2.THRESH_OTSU)
+    ret_tmrm, thresh_tmrm = cv2.threshold(denoise_tmrm2, np.min(denoise_tmrm2), np.max(denoise_tmrm2), 
+                                          cv2.THRESH_OTSU)
     tmrm_2 = adjust_sigmoid (denoise_tmrm2, (ret_tmrm/np.max(denoise_tmrm2))+0.04, 7)
     tmrm_2 = np.uint8(tmrm_2)
     ret_tmrm2, binary_tmrm = cv2.threshold(tmrm_2, 0, 255, cv2.THRESH_OTSU)
