@@ -1,13 +1,46 @@
 from typing import Union, List
 from pathlib import Path
 from itertools import product
+from aicsimageio import AICSImage
+import tifffile
 
 
-def create_folder_for_each_czi(folder_path: Union[str, Path]):
-    list_of_name = [Path(folder_path, fn.stem)  for fn in Path(folder_path).iterdir() if fn.suffix == ".czi"]
-    for name in list_of_name:
-        Path(name).mkdir(parents=True, exist_ok=True)
-    return list_of_name
+def create_folder_for_each_czi(folder_path: Union[str, Path], dest_folder=None) -> dict:
+    dest_folder = dest_folder if dest_folder is not None else folder_path
+    path_dic = {fn.stem: Path(dest_folder, fn.stem) 
+                for fn in Path(folder_path).iterdir() if fn.suffix == ".czi"}
+    for name, path in path_dic.items():
+        Path(path).mkdir(parents=True, exist_ok=True)
+    return path_dic
+
+
+def sep_czi_channels_to_tiff(czi_file_path, save_dir, id_format="{czi_name}{i:04}", axes="TCZYX"):
+    img = AICSImage(czi_file_path)
+    ch_idx = axes.index("C")
+    for ci in range(img.shape[ch_idx]):
+        sel_img = img.get_image_data(axes, C=ci)
+
+        tifffile.imwrite(
+            Path(save_dir, id_format.format(i=ci, czi_name=Path(czi_file_path).stem)).with_suffix(".tif"),
+            sel_img,
+            imagej=False,
+            photometric='minisblack',
+            metadata={'axes': axes},
+        )
+
+
+def split_czi_to_tiffs(folder_path, dest_folder=None, sep_dir=True, id_format="{czi_name}{i:04}", axes="TCZYX"):
+    all_czi_paths = [fn for fn in Path(folder_path).glob("*.czi")]
+    if sep_dir:
+        dest_folders = create_folder_for_each_czi(folder_path=folder_path, dest_folder=dest_folder)
+        for czi_path in all_czi_paths:
+            sep_czi_channels_to_tiff(czi_path, dest_folders[czi_path.stem], id_format=id_format, axes=axes)
+        return dest_folders
+    dest_folder = folder_path if dest_folder is None else dest_folder
+    Path(dest_folder).mkdir(parents=True, exist_ok=True)
+    for czi_path in all_czi_paths:
+        sep_czi_channels_to_tiff(czi_path, dest_folder, id_format=id_format, axes=axes)
+    return {"dest_folder": dest_folder}
 
 
 def list_all_folders(rootpath: str) -> List[Path]:
