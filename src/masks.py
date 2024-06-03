@@ -6,14 +6,16 @@ from scipy import ndimage as nd
 from matplotlib import pyplot as plt
 
 
-def get_binary_tmrm(tmrm, mask_img_path=None):
-    denoise_tmrm = denoise_tv_chambolle(tmrm, weight = 0.05)
+def get_binary_tmrm(tmrm, mask_img_path=None, 
+                    weight=0.05, added_cutoff=0.04, gain=7):
+    denoise_tmrm = denoise_tv_chambolle(tmrm, weight = weight)
     denoise_tmrm2 = np.uint8((denoise_tmrm*(255/np.max(denoise_tmrm))).astype(int))
     kernel = np.ones((3, 3), np.uint8)
     denoise_tmrm2 = cv2.erode(denoise_tmrm2, kernel, iterations=3)
 
-    ret_tmrm, thresh_tmrm = cv2.threshold(denoise_tmrm2, np.min(denoise_tmrm2), np.max(denoise_tmrm2), cv2.THRESH_OTSU)
-    tmrm_2 = adjust_sigmoid (denoise_tmrm2, (ret_tmrm/np.max(denoise_tmrm2))+0.04, 7)
+    ret_tmrm, thresh_tmrm = cv2.threshold(denoise_tmrm2, np.min(denoise_tmrm2), np.max(denoise_tmrm2), 
+                                          cv2.THRESH_OTSU)
+    tmrm_2 = adjust_sigmoid (denoise_tmrm2, (ret_tmrm/np.max(denoise_tmrm2))+added_cutoff, gain)
     tmrm_2 = np.uint8(tmrm_2)
     ret_tmrm2, binary_tmrm = cv2.threshold(tmrm_2, 0, 255, cv2.THRESH_OTSU)
     
@@ -33,13 +35,14 @@ def get_binary_img(img):
     return img2, binary2
 
 
-def get_binary_nucleus(nucleus, mask_img_path=None):
-    denoise_nucleus = nd.median_filter(nucleus, 3)
-    kernel = np.ones((3, 3), np.uint8)
+def get_binary_nucleus(nucleus, mask_img_path=None, 
+                       filter_size=3, dilate_kernel_size=3, added_cutoff=0.04, gain=7):
+    denoise_nucleus = nd.median_filter(nucleus, filter_size)
+    kernel = np.ones((dilate_kernel_size, dilate_kernel_size), np.uint8)
     denoise_nucleus2 = cv2.dilate(denoise_nucleus, kernel, iterations=2)
 
     ret_nucleus, thresh_nucleus = cv2.threshold(denoise_nucleus2, np.min(denoise_nucleus2), np.max(denoise_nucleus2), cv2.THRESH_OTSU)
-    nucleus_2 = adjust_sigmoid (denoise_nucleus2, (ret_nucleus/np.max(denoise_nucleus2))+0.04, 7)
+    nucleus_2 = adjust_sigmoid (denoise_nucleus2, (ret_nucleus/np.max(denoise_nucleus2))+added_cutoff, gain)
     nucleus_2 = np.uint8(nucleus_2)
     ret_nucleus2, binary_nucleus = cv2.threshold(nucleus_2, 0, 255, cv2.THRESH_OTSU)
     binary_nucleus = cv2.dilate(binary_nucleus, kernel, iterations=10)
