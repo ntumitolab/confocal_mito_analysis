@@ -6,3 +6,5 @@ matplotlib
 opencv-python
 tifffile
 aicsimageio
+skan
+aicspylibczi>=3.1.1
